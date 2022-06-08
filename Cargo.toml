@@ -1,5 +1,5 @@
 [package]
-name = "hammer-shell"
+name = "rule-shell"
 version = "0.1.0"
 edition = "2021"
 
