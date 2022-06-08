@@ -12,3 +12,5 @@ strip = true
 
 [dependencies]
 nix = { version = "0.24.1" }
+signal-hook = "0.3.14"
+colored = "2"
