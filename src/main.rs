@@ -5,9 +5,26 @@ use std::process::{exit, Child, Command};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+enum ProcessState {
+    Background,
+    Foreground,
+    Stopped,
+}
+
+impl ProcessState {
+    fn to_string(&self) -> String {
+        match self {
+            ProcessState::Background => String::from("background"),
+            ProcessState::Foreground => String::from("foreground"),
+            ProcessState::Stopped => String::from("stopped"),
+        }
+    }
+}
+
 struct Process {
     name: String,
     handle: Child,
+    state: ProcessState,
 }
 
 type HandleMutex = Arc<Mutex<Vec<Process>>>;
@@ -42,15 +59,15 @@ fn parse_command(input: Vec<String>) -> (String, Vec<String>, bool) {
     (name, args, background)
 }
 
-fn initialize_signal_handler(background_processes: &HandleMutex) {
+fn initialize_signal_handler(process_list: &HandleMutex) {
     let mut signals = Signals::new(&[SIGCHLD]).expect("Error creating signal handler");
-    let background_processes = Arc::clone(background_processes);
+    let process_list = Arc::clone(process_list);
     thread::spawn(move || {
         for _ in signals.forever() {
             let mut finished_indexes: Vec<usize> = Vec::new();
-            let mut background_processes = background_processes.lock().unwrap();
+            let mut process_list = process_list.lock().unwrap();
 
-            for (index, process) in background_processes.iter_mut().enumerate() {
+            for (index, process) in process_list.iter_mut().enumerate() {
                 let id = process.id();
                 match process.handle.try_wait() {
                     Ok(Some(status)) => {
@@ -66,36 +83,45 @@ fn initialize_signal_handler(background_processes: &HandleMutex) {
                 }
             }
             for index in finished_indexes {
-                background_processes.remove(index);
+                process_list.remove(index);
             }
         }
     });
 }
 
-fn jobs(background_processes: &HandleMutex) {
-    let mut background_processes = background_processes.lock().unwrap();
-    for (index, process) in background_processes.iter_mut().enumerate() {
-        let status = if let Ok(None) = process.handle.try_wait() {
-            "Running"
-        } else {
-            "Background"
-        };
+fn jobs(process_list: &HandleMutex) {
+    let process_list = process_list.lock().unwrap();
+    for (index, process) in process_list.iter().enumerate() {
         println!(
             "[{}] {} {} - {}",
             index + 1,
             process.name,
             colorize_pid(&process.id()),
-            status
+            process.state.to_string()
         );
+    }
+}
+
+fn fg(process_list: &HandleMutex, index: usize) {
+    let mut process_list = process_list.lock().unwrap();
+    if let Some(p) = process_list.get_mut(index) {
+        p.state = ProcessState::Foreground;
+        match p.handle.wait() {
+            Ok(status) => {
+                println!("Process {} exited with code {}", p.id(), status);
+                process_list.remove(index);
+            }
+            Err(e) => println!("Error waiting for process {}: {}", p.id(), e),
+        }
     }
 }
 
 fn main() {
     const PROMPT: &str = "λ";
 
-    let background_processes: HandleMutex = Arc::new(Mutex::new(Vec::new()));
+    let process_list: HandleMutex = Arc::new(Mutex::new(Vec::new()));
 
-    initialize_signal_handler(&background_processes);
+    initialize_signal_handler(&process_list);
 
     loop {
         print!("{} ", PROMPT.cyan());
@@ -109,8 +135,21 @@ fn main() {
         if let Some(input) = parse_input(&input) {
             let (name, args, background) = parse_command(input);
 
-            if name == "jobs" {
-                jobs(&background_processes);
+            if name == "exit" {
+                exit(0);
+            } else if name == "jobs" {
+                jobs(&process_list);
+                continue;
+            } else if name == "fg" {
+                let arg: Result<usize, _> = if let Some(arg) = args.first() {
+                    arg.parse()
+                } else {
+                    Ok(1)
+                };
+                match arg {
+                    Ok(index) => fg(&process_list, index - 1),
+                    Err(e) => println!("Error parsing argument: {}", e),
+                }
                 continue;
             }
 
@@ -119,8 +158,12 @@ fn main() {
             if background {
                 match command.spawn() {
                     Ok(handle) => {
-                        let mut background_processes = background_processes.lock().unwrap();
-                        background_processes.push(Process { name, handle });
+                        let mut process_list = process_list.lock().unwrap();
+                        process_list.push(Process {
+                            name,
+                            handle,
+                            state: ProcessState::Background,
+                        });
                     }
                     Err(e) => panic!("Error! {}", e),
                 };
