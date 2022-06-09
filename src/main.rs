@@ -8,7 +8,7 @@ use std::thread;
 enum ProcessState {
     Background,
     Foreground,
-    Stopped,
+    // Stopped,
 }
 
 impl ProcessState {
@@ -16,7 +16,7 @@ impl ProcessState {
         match self {
             ProcessState::Background => String::from("background"),
             ProcessState::Foreground => String::from("foreground"),
-            ProcessState::Stopped => String::from("stopped"),
+            // ProcessState::Stopped => String::from("stopped"),
         }
     }
 }
