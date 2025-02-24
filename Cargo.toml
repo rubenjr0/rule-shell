@@ -4,13 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[profile.release]
-opt-level = "s"
-lto = "fat"
-codegen-units = 1
-strip = true
-panic = "abort"
-
 [dependencies]
 signal-hook = "0.3.14"
-colored = "2"
+colored = "3.0.0"
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+debug = false
+strip = true

@@ -1,5 +1,6 @@
 use colored::{ColoredString, Colorize};
 use signal_hook::{consts::SIGCHLD, iterator::Signals};
+use std::fmt::Display;
 use std::io::Write;
 use std::process::{exit, Child, Command};
 use std::sync::{Arc, Mutex};
@@ -11,12 +12,11 @@ enum ProcessState {
     // Stopped,
 }
 
-impl ProcessState {
-    fn to_string(&self) -> String {
+impl Display for ProcessState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProcessState::Background => String::from("background"),
-            ProcessState::Foreground => String::from("foreground"),
-            // ProcessState::Stopped => String::from("stopped"),
+            ProcessState::Background => write!(f, "background"),
+            ProcessState::Foreground => write!(f, "foreground"),
         }
     }
 }
@@ -36,12 +36,12 @@ impl Process {
 }
 
 fn colorize_pid(pid: &u32) -> ColoredString {
-    format!("{}", pid).green()
+    pid.to_string().green()
 }
 
 fn parse_input(input: &str) -> Option<Vec<String>> {
     let input: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
-    if input.len() == 0 {
+    if input.is_empty() {
         None
     } else {
         Some(input)
@@ -60,7 +60,7 @@ fn parse_command(input: Vec<String>) -> (String, Vec<String>, bool) {
 }
 
 fn initialize_signal_handler(process_list: &HandleMutex) {
-    let mut signals = Signals::new(&[SIGCHLD]).expect("Error creating signal handler");
+    let mut signals = Signals::new([SIGCHLD]).expect("Error creating signal handler");
     let process_list = Arc::clone(process_list);
     thread::spawn(move || {
         for _ in signals.forever() {
@@ -97,7 +97,7 @@ fn jobs(process_list: &HandleMutex) {
             index + 1,
             process.name,
             colorize_pid(&process.id()),
-            process.state.to_string()
+            process.state
         );
     }
 }
@@ -167,17 +167,9 @@ fn main() {
                     }
                     Err(e) => panic!("Error! {}", e),
                 };
-            } else {
-                if let Err(e) = command.status() {
-                    println!("Error: {}", e);
-                }
+            } else if let Err(e) = command.status() {
+                println!("Error: {}", e);
             }
-            /*
-            println!(
-                "Running command {} with args {:?}, bg: {}",
-                name, args, background
-            );
-            */
         }
     }
 }
